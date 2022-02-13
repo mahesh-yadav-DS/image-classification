@@ -1,0 +1,99 @@
+import time
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+%matplotlib inline
+from sklearn.model_selection import train_test_split,RepeatedStratifiedKFold
+from sklearn.metrics import classification_report
+import keras
+from sklearn.model_selection import GridSearchCV
+from keras.datasets import mnist
+from sklearn.metrics import auc, accuracy_score, confusion_matrix, mean_squared_error,classification_report
+from xgboost import XGBClassifier
+from catboost import CatBoostClassifier
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.ensemble import RandomForestClassifier
+
+def inspect_performance(model, train_images, train_labels, test_images, test_labels, pred):
+    "Prints training performance, test performance and a performance report"
+    print("Training accuracy: ", model.score(train_images,train_labels))
+    print("Test accuracy: ", model.score(test_images,test_labels))
+    print("Test report: ")
+    print(classification_report(pred, test_labels))
+
+def plot_confusion_matrix(target, pred):
+    plt.figure(figsize=[9,6])
+    "Plots a confusion matrix using a heatmap"
+    conf_mat = confusion_matrix(target, pred)
+    sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False)
+    plt.xlabel('true label')
+    plt.ylabel('predicted label')
+
+def plot_error(y_pred): # reference link at the end of notebook
+    y_pred_classes = np.argmax(y_pred,axis =1) 
+    errors = (y_pred_classes - test_Y != 0)
+    Y_pred_classes_errors = y_pred_classes[errors]
+    Y_pred_errors = y_pred[errors]
+    Y_true_errors = test_Y[errors]
+    X_val_errors = test_X[errors]
+    def display_errors(errors_index,img_errors,pred_errors, obs_errors):
+        """ This function shows 6 images with their predicted and real labels"""
+        n = 0
+        nrows = 3
+        ncols = 3
+        fig, ax = plt.subplots(nrows,ncols,sharex=True,sharey=True)
+        for row in range(nrows):
+            for col in range(ncols):
+                error = errors_index[n]
+                ax[row,col].imshow((img_errors[error]).reshape((28,28)))
+                ax[row,col].set_title("Pred :{} True :{}".format(pred_errors[error],obs_errors[error]))
+                n += 1
+        fig.tight_layout(pad = 1)
+    Y_pred_errors_prob = np.max(Y_pred_errors,axis = 1)
+    true_prob_errors = np.diagonal(np.take(Y_pred_errors, Y_true_errors, axis=1))
+    delta_pred_true_errors = Y_pred_errors_prob - true_prob_errors
+    sorted_dela_errors = np.argsort(delta_pred_true_errors)
+    most_important_errors = sorted_dela_errors[-10:]
+    return(display_errors(most_important_errors, X_val_errors, Y_pred_classes_errors, Y_true_errors))
+    
+(train_X,train_Y), (test_X,test_Y) = mnist.load_data()
+    
+print('Training data shape : ', train_X.shape, train_Y.shape)
+
+print('Testing data shape : ', test_X.shape, test_Y.shape)
+
+classes = np.unique(train_Y)
+nClasses = len(classes)
+print('Total number of outputs : ', nClasses)
+print('Output classes : ', classes)
+
+sns.countplot(train_Y)
+plt.show()
+
+train_X = train_X.reshape(-1, 784)
+test_X = test_X.reshape(-1, 784)
+
+train_X = train_X.astype('float32')
+test_X = test_X.astype('float32')
+train_X = train_X / 255.
+test_X = test_X / 255. 
+
+train_X,valid_X,train_label,valid_label = train_test_split(train_X, train_Y, test_size=0.2, random_state=13)
+
+xgb = XGBClassifier(
+    objective= 'multi:softprob',
+    nthread=4,
+    seed=42,
+    num_class=10,
+)
+eval_set = [(train_X,train_label),(valid_X,valid_label)]
+
+xgb.fit(train_X,train_label,early_stopping_rounds=3, eval_metric=["merror", "mlogloss"], eval_set=eval_set, verbose=True)
+
+y_pred_xgb = xgb.predict(test_X)
+inspect_performance(xgb,train_X,train_label, test_X, test_Y, y_pred_xgb)
+
+plot_confusion_matrix(test_Y,y_pred_xgb)
+y_pred_xgb_pro = xgb.predict_proba(test_X)
+plot_error(y_pred_xgb_pro)
